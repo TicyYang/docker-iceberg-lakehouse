@@ -1,0 +1,151 @@
+x-minio-common: &minio-common
+  image: quay.io/minio/minio:${MINIO_VERSION}
+  command: server --console-address ":9001" http://minio{1...4}/data{1...2}
+  expose:
+    - "9000"
+    - "9001"
+  environment:
+    - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+    - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    - MINIO_SERVER_URL=${MINIO_SERVER_URL}
+    - MINIO_BROWSER_REDIRECT_URL=${MINIO_BROWSER_REDIRECT_URL}
+  networks:
+    - iceberg-net
+  healthcheck:
+    test: ["CMD", "mc", "ready", "local"]
+    interval: 5s
+    timeout: 5s
+    retries: 5
+
+services:
+  # ---------- PostgreSQL ----------
+  postgres-catalog:
+    image: postgres:16-alpine
+    container_name: postgres-catalog
+    networks:
+      - iceberg-net
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=iceberg_catalog
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d iceberg_catalog"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./postgresql/data:/var/lib/postgresql/data
+    ports:
+      - 5432:5432
+  
+  # ---------- Spark & Iceberg ----------
+  spark-iceberg:
+    image: tabulario/spark-iceberg
+    container_name: spark-iceberg
+    build: spark/
+    depends_on:
+      postgres-catalog:
+        condition: service_healthy
+      nginx:
+        condition: service_started
+    networks:
+      - iceberg-net
+    environment:
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+      - AWS_REGION=us-east-1
+    volumes:
+      - ./spark/notebooks:/home/iceberg/notebooks
+      - ./spark/scripts:/home/iceberg/scripts:ro
+    ports:
+      - 8888:8888
+      - 8080:8080
+      - 10000:10000
+      - 10001:10001
+
+  # ---------- MinIO cluster ----------
+  minio1:
+    <<: *minio-common
+    hostname: minio1
+    container_name: minio1
+    volumes:
+      - ./data/minio1/data1:/data1
+      - ./data/minio1/data2:/data2
+
+  minio2:
+    <<: *minio-common
+    hostname: minio2
+    container_name: minio2
+    volumes:
+      - ./data/minio2/data1:/data1
+      - ./data/minio2/data2:/data2
+
+  minio3:
+    <<: *minio-common
+    hostname: minio3
+    container_name: minio3
+    volumes:
+      - ./data/minio3/data1:/data1
+      - ./data/minio3/data2:/data2
+
+  minio4:
+    <<: *minio-common
+    hostname: minio4
+    container_name: minio4
+    volumes:
+      - ./data/minio4/data1:/data1
+      - ./data/minio4/data2:/data2
+  
+  # ---------- Nginx Load Balancer ----------
+  nginx:
+    image: nginx:${NGINX_VERSION}
+    hostname: nginx
+    container_name: minio-nginx
+    depends_on:
+      - minio1
+      - minio2
+      - minio3
+      - minio4
+    networks:
+      - iceberg-net
+    restart: unless-stopped
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+  
+  # ---------- mc ----------
+  mc:
+    image: minio/mc
+    container_name: mc
+    depends_on:
+      minio1:
+        condition: service_healthy
+      minio2:
+        condition: service_healthy
+      minio3:
+        condition: service_healthy
+      minio4:
+        condition: service_healthy
+      nginx:
+        condition: service_started
+    networks:
+      - iceberg-net
+    environment:
+      - AWS_ACCESS_KEY_ID=admin
+      - AWS_SECRET_ACCESS_KEY=password
+      - AWS_REGION=us-east-1
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc alias set minio http://nginx:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}) do echo '...waiting...' && sleep 30; done;
+      /usr/bin/mc mb --ignore-existing minio/warehouse;
+      /usr/bin/mc anonymous set public minio/warehouse;
+      tail -f /dev/null
+      "
+
+networks:
+  iceberg-net:
+    name: iceberg-net
+    driver: bridge
