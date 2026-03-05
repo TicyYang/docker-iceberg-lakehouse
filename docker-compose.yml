@@ -20,17 +20,17 @@ x-minio-common: &minio-common
 services:
   # ---------- PostgreSQL ----------
   postgres-catalog:
-    image: postgres:16-alpine
+    image: postgres:${POSTGRESQL_VERSION}
     container_name: postgres-catalog
     networks:
       - iceberg-net
     environment:
-      - POSTGRES_USER=admin
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=iceberg_catalog
+      - POSTGRES_USER=${CATALOG_USER}
+      - POSTGRES_PASSWORD=${CATALOG_PASSWORD}
+      - POSTGRES_DB=${CATALOG_DB}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d iceberg_catalog"]
+      test: ["CMD-SHELL", "pg_isready -U ${CATALOG_USER} -d ${CATALOG_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -41,7 +41,7 @@ services:
   
   # ---------- Spark & Iceberg ----------
   spark-iceberg:
-    image: tabulario/spark-iceberg
+    image: tabulario/spark-iceberg:${SPARK_ICEBERG_VERSION}
     container_name: spark-iceberg
     build: spark/
     depends_on:
@@ -118,7 +118,7 @@ services:
   
   # ---------- mc ----------
   mc:
-    image: minio/mc
+    image: minio/mc:${MC_VERSION}
     container_name: mc
     depends_on:
       minio1:
@@ -134,8 +134,8 @@ services:
     networks:
       - iceberg-net
     environment:
-      - AWS_ACCESS_KEY_ID=admin
-      - AWS_SECRET_ACCESS_KEY=password
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
       - AWS_REGION=us-east-1
     entrypoint: >
       /bin/sh -c "
