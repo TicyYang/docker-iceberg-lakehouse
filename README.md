@@ -16,12 +16,12 @@ It is an enhanced evolution of the [databricks/docker-spark-iceberg](https://git
 
 - OS: Ubuntu Server 22.04 LTS
 - Docker Compose: v2.26.1
-- Image tag
+- Image tag:
   - postgresql: postgres:16-alpine
-  - spark-iceberg:
+  - spark-iceberg: 3.5.5_1.8.1
   - minio: RELEASE.2025-09-07T16-13-09Z
   - nginx: 1.29.2
-  - mc:
+  - mc: RELEASE.2025-08-13T08-35-41Z
 
 ## Directory Structure
 
