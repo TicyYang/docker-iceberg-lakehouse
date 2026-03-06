@@ -66,4 +66,7 @@ docker-spark-iceberg
    - PySpark: `docker exec -it spark-iceberg pyspark`
    - Scala: `docker exec -it spark-iceberg spark-shell`
 
-6. To stop and remove all containers: `docker compose down`
+6. Submit Python Scripts:
+    Place scripts in `spark/scripts/` and run: `docker exec spark-iceberg bash -c "spark-submit <script>.py`
+
+7. To stop and remove all containers: `docker compose down`
